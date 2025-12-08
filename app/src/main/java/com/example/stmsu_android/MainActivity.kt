@@ -82,7 +82,6 @@ fun MapClientScreen() {
     val coroutineScope = rememberCoroutineScope()
 
     var isSelectingOnMap by remember { mutableStateOf(false) }
-
     var isPixelsMode by remember { mutableStateOf(true) }
 
     var x1Text by remember { mutableStateOf("") }
