@@ -33,6 +33,21 @@ import org.ksoap2.serialization.SoapObject
 import org.ksoap2.serialization.SoapPrimitive
 import org.ksoap2.serialization.SoapSerializationEnvelope
 import org.ksoap2.transport.HttpTransportSE
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.runtime.remember
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.unit.IntSize
+import kotlin.math.max
+import kotlin.math.min
+import kotlin.math.roundToInt
+import androidx.compose.ui.input.pointer.pointerInput
 
 private const val NAMESPACE = "http://maps.pg.pl/"
 private const val METHOD_NAME_PIXELS = "getMapFragmentByPixels"
@@ -40,6 +55,9 @@ private const val METHOD_NAME_GEO = "getMapFragmentByGeo"
 private const val SOAP_ACTION_PIXELS = NAMESPACE + METHOD_NAME_PIXELS
 private const val SOAP_ACTION_GEO = NAMESPACE + METHOD_NAME_GEO
 private const val URL = "http://10.0.2.2:8080/MapService"
+
+private const val MAP_WIDTH = 1000
+private const val MAP_HEIGHT = 1000
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -63,6 +81,8 @@ fun MapClientScreen() {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
 
+    var isSelectingOnMap by remember { mutableStateOf(false) }
+
     var isPixelsMode by remember { mutableStateOf(true) }
 
     var x1Text by remember { mutableStateOf("") }
@@ -75,22 +95,49 @@ fun MapClientScreen() {
     var lat2Text by remember { mutableStateOf("") }
     var lon2Text by remember { mutableStateOf("") }
 
-    // wynikowy bitmap
     var resultBitmap by remember { mutableStateOf<Bitmap?>(null) }
+
+    if (isSelectingOnMap) {
+        MapSelectionScreen(
+            onCancel = {
+                isSelectingOnMap = false
+            },
+            onConfirm = { selX1, selY1, selX2, selY2 ->
+                x1Text = selX1.toString()
+                y1Text = selY1.toString()
+                x2Text = selX2.toString()
+                y2Text = selY2.toString()
+
+                isPixelsMode = true
+                isSelectingOnMap = false
+            }
+        )
+        return
+    }
 
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(16.dp)
+            .padding(
+                start = 16.dp,
+                end = 16.dp,
+                top = 50.dp,
+                bottom = 50.dp
+            )
             .verticalScroll(rememberScrollState()),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Row(
+        Column(
             modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically
+            horizontalAlignment = Alignment.Start
         ) {
+            Text(
+                text = "Wybierz typ wprowadzanych danych:",
+                fontSize = 18.sp,
+                modifier = Modifier.padding(bottom = 8.dp)
+            )
+
             Row(
-                modifier = Modifier.weight(0.7f),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 RadioButton(
@@ -99,11 +146,13 @@ fun MapClientScreen() {
                 )
                 Text(
                     text = "Piksele",
-                    fontSize = 18.sp
+                    fontSize = 16.sp
                 )
             }
+
+            Spacer(modifier = Modifier.height(4.dp))
+
             Row(
-                modifier = Modifier.weight(1.3f),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 RadioButton(
@@ -112,12 +161,12 @@ fun MapClientScreen() {
                 )
                 Text(
                     text = "Współrzędne geograficzne",
-                    fontSize = 18.sp
+                    fontSize = 16.sp
                 )
             }
         }
 
-        Spacer(modifier = Modifier.height(8.dp))
+        Spacer(modifier = Modifier.height(16.dp))
 
         if (isPixelsMode) {
             Column(
@@ -211,7 +260,7 @@ fun MapClientScreen() {
             }
         }
 
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(8.dp))
 
         Button(
             onClick = {
@@ -271,7 +320,11 @@ fun MapClientScreen() {
                     }
                 }
             },
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier.fillMaxWidth(),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = Color(0xFFA5D6A7),
+                contentColor = Color.Black
+            )
         ) {
             Text(text = "Pobierz fragment")
         }
@@ -280,16 +333,42 @@ fun MapClientScreen() {
 
         Button(
             onClick = {
-                // TU PÓŹNIEJ PODPIĄŻESZ rysowanie prostokąta
-                Toast.makeText(
-                    context,
-                    "TODO: wybór prostokąta na mapie",
-                    Toast.LENGTH_SHORT
-                ).show()
+                isSelectingOnMap = true
             },
             modifier = Modifier.fillMaxWidth()
         ) {
             Text(text = "Wybierz na mapie")
+        }
+
+        Spacer(modifier = Modifier.height(100.dp))
+
+        Button(
+            onClick = {
+                x1Text = ""
+                y1Text = ""
+                x2Text = ""
+                y2Text = ""
+
+                lat1Text = ""
+                lon1Text = ""
+                lat2Text = ""
+                lon2Text = ""
+
+                resultBitmap = null
+
+                Toast.makeText(context, "Dane wyczyszczone", Toast.LENGTH_SHORT).show()
+            },
+            modifier = Modifier
+                .fillMaxWidth(0.6f),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = Color(0xFFD24141),
+                contentColor = Color.White
+            )
+        ) {
+            Text(
+                "Wyczyść dane",
+                fontSize = 14.sp
+            )
         }
 
         Spacer(modifier = Modifier.height(16.dp))
@@ -315,8 +394,7 @@ suspend fun callWebServicePixels(
 ): Bitmap? = withContext(Dispatchers.IO) {
     try {
         val request = SoapObject(NAMESPACE, METHOD_NAME_PIXELS).apply {
-            // UWAGA: nazwy parametrów muszą odpowiadać temu,
-            // czego oczekuje serwer (Osoba A)!
+            // do sprawdzenia nazwy parametrów by się zgadzały z tym co oczekuje serwer
             addProperty("x1", x1)
             addProperty("y1", y1)
             addProperty("x2", x2)
@@ -392,5 +470,143 @@ private fun decodeBase64ToBitmap(base64Str: String): Bitmap? {
     } catch (e: Exception) {
         Log.e("SOAP", "Błąd dekodowania Base64: ${e.message}", e)
         null
+    }
+}
+
+@Composable
+fun MapSelectionScreen(
+    onCancel: () -> Unit,
+    onConfirm: (x1: Int, y1: Int, x2: Int, y2: Int) -> Unit
+) {
+    val context = LocalContext.current
+
+    var startX by remember { mutableStateOf<Float?>(null) }
+    var startY by remember { mutableStateOf<Float?>(null) }
+    var endX by remember { mutableStateOf<Float?>(null) }
+    var endY by remember { mutableStateOf<Float?>(null) }
+
+    var boxSize by remember { mutableStateOf(IntSize.Zero) }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(
+                start = 16.dp,
+                end = 16.dp,
+                top = 50.dp,
+                bottom = 50.dp
+            )
+    ) {
+        Text(
+            text = "Narysuj prostokąt na mapie",
+            style = MaterialTheme.typography.titleMedium
+        )
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f)
+                .onGloballyPositioned { layoutCoordinates ->
+                    boxSize = layoutCoordinates.size
+                }
+                .pointerInput(Unit) {
+                    detectDragGestures(
+                        onDragStart = { offset ->
+                            startX = offset.x
+                            startY = offset.y
+                            endX = offset.x
+                            endY = offset.y
+                        },
+                        onDrag = { change, _ ->
+                            endX = change.position.x
+                            endY = change.position.y
+                        },
+                        onDragEnd = { /* zostawiamy ostatnią pozycję */ },
+                        onDragCancel = { }
+                    )
+                }
+        ) {
+            Image(
+                painter = painterResource(id = R.drawable.mapa_redy),
+                contentDescription = "Mapa miasta",
+                modifier = Modifier
+                    .fillMaxSize()
+            )
+
+            Canvas(modifier = Modifier.matchParentSize()) {
+                val sx = startX
+                val sy = startY
+                val ex = endX
+                val ey = endY
+
+                if (sx != null && sy != null && ex != null && ey != null) {
+                    val left = min(sx, ex)
+                    val right = max(sx, ex)
+                    val top = min(sy, ey)
+                    val bottom = max(sy, ey)
+
+                    val width = right - left
+                    val height = bottom - top
+
+                    if (width > 5f && height > 5f) {
+                        drawRect(
+                            color = Color.Green.copy(alpha = 0.2f),
+                            topLeft = Offset(left, top),
+                            size = Size(width, height)
+                        )
+                        drawRect(
+                            color = Color.Green,
+                            topLeft = Offset(left, top),
+                            size = Size(width, height),
+                            style = Stroke(width = 5f, cap = StrokeCap.Round)
+                        )
+                    }
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.End
+        ) {
+            TextButton(onClick = { onCancel() }) {
+                Text("Anuluj")
+            }
+            Spacer(modifier = Modifier.width(8.dp))
+            Button(
+                onClick = {
+                    val sx = startX
+                    val sy = startY
+                    val ex = endX
+                    val ey = endY
+
+                    if (sx == null || sy == null || ex == null || ey == null || boxSize.width <= 0 || boxSize.height <= 0) {
+                        Toast.makeText(context, "Najpierw narysuj prostokąt", Toast.LENGTH_SHORT).show()
+                        return@Button
+                    }
+
+                    val leftView = min(sx, ex)
+                    val rightView = max(sx, ex)
+                    val topView = min(sy, ey)
+                    val bottomView = max(sy, ey)
+
+                    val scaleX = MAP_WIDTH.toFloat() / boxSize.width.toFloat()
+                    val scaleY = MAP_HEIGHT.toFloat() / boxSize.height.toFloat()
+
+                    val x1 = (leftView * scaleX).roundToInt().coerceIn(0, MAP_WIDTH - 1)
+                    val x2 = (rightView * scaleX).roundToInt().coerceIn(0, MAP_WIDTH - 1)
+                    val y1 = (topView * scaleY).roundToInt().coerceIn(0, MAP_HEIGHT - 1)
+                    val y2 = (bottomView * scaleY).roundToInt().coerceIn(0, MAP_HEIGHT - 1)
+
+                    onConfirm(x1, y1, x2, y2)
+                }
+            ) {
+                Text("OK")
+            }
+        }
     }
 }
