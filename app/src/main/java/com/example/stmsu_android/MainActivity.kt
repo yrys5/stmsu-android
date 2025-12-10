@@ -405,33 +405,6 @@ fun MapClientScreen() {
         }
 
         Spacer(modifier = Modifier.height(16.dp))
-
-        resultBitmap?.let { bmp ->
-            Image(
-                bitmap = bmp.asImageBitmap(),
-                contentDescription = "Fragment mapy",
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .wrapContentHeight(),
-                contentScale = ContentScale.Fit
-            )
-        }
-
-        base64ImageText?.let { base64 ->
-            Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                text = "Base64 PNG:",
-                fontSize = 14.sp
-            )
-            Spacer(modifier = Modifier.height(4.dp))
-            Text(
-                text = base64,
-                fontSize = 10.sp,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(min = 60.dp)
-            )
-        }
     }
 }
 
@@ -481,10 +454,10 @@ suspend fun callWebServiceGeo(
 ): String? = withContext(Dispatchers.IO) {
     try {
         val request = SoapObject(NAMESPACE, METHOD_NAME_GEO).apply {
-            addProperty("lat1", lat1)
-            addProperty("lon1", lon1)
-            addProperty("lat2", lat2)
-            addProperty("lon2", lon2)
+            addProperty("arg0", lat1)
+            addProperty("arg1", lon1)
+            addProperty("arg2", lat2)
+            addProperty("arg3", lon2)
         }
 
         val envelope = SoapSerializationEnvelope(SoapEnvelope.VER11).apply {
