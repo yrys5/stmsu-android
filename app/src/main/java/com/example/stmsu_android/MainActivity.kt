@@ -560,7 +560,7 @@ fun MapSelectionScreen(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .weight(1f)
+                .aspectRatio(1f)            // KWADRAT – odpowiada 1000x1000
                 .onGloballyPositioned { layoutCoordinates ->
                     boxSize = layoutCoordinates.size
                 }
@@ -584,8 +584,8 @@ fun MapSelectionScreen(
             Image(
                 painter = painterResource(id = R.drawable.mapa),
                 contentDescription = "Mapa miasta",
-                modifier = Modifier
-                    .fillMaxSize()
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.FillBounds   // mapa wypełnia CAŁY kwadrat
             )
 
             Canvas(modifier = Modifier.matchParentSize()) {
@@ -647,6 +647,15 @@ fun MapSelectionScreen(
                     val topView = min(sy, ey)
                     val bottomView = max(sy, ey)
 
+                    val widthView = rightView - leftView
+                    val heightView = bottomView - topView
+
+                    if (widthView < 5f || heightView < 5f) {
+                        Toast.makeText(context, "Prostokąt jest za mały – przeciągnij palcem po mapie", Toast.LENGTH_SHORT).show()
+                        return@Button
+                    }
+
+                    // teraz Box jest 1:1 i cały wypełniony mapą, więc skalowanie jest liniowe
                     val scaleX = MAP_WIDTH.toFloat() / boxSize.width.toFloat()
                     val scaleY = MAP_HEIGHT.toFloat() / boxSize.height.toFloat()
 
@@ -654,6 +663,10 @@ fun MapSelectionScreen(
                     val x2 = (rightView * scaleX).roundToInt().coerceIn(0, MAP_WIDTH - 1)
                     val y1 = (topView * scaleY).roundToInt().coerceIn(0, MAP_HEIGHT - 1)
                     val y2 = (bottomView * scaleY).roundToInt().coerceIn(0, MAP_HEIGHT - 1)
+
+                    Log.d("MAP_SELECT", "Box: ${boxSize.width}x${boxSize.height}, " +
+                            "viewRect=[$leftView,$topView]-[$rightView,$bottomView], " +
+                            "pixels=[$x1,$y1]-[$x2,$y2]")
 
                     onConfirm(x1, y1, x2, y2)
                 }
