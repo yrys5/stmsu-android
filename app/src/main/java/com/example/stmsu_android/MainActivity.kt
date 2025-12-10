@@ -52,8 +52,10 @@ import androidx.compose.ui.input.pointer.pointerInput
 private const val NAMESPACE = "http://maps.pg.pl/"
 private const val METHOD_NAME_PIXELS = "getMapFragmentByPixels"
 private const val METHOD_NAME_GEO = "getMapFragmentByGeo"
-private const val SOAP_ACTION_PIXELS = NAMESPACE + METHOD_NAME_PIXELS
-private const val SOAP_ACTION_GEO = NAMESPACE + METHOD_NAME_GEO
+//private const val SOAP_ACTION_PIXELS = NAMESPACE + METHOD_NAME_PIXELS
+private const val SOAP_ACTION_PIXELS = ""
+//private const val SOAP_ACTION_GEO = NAMESPACE + METHOD_NAME_GEO
+private const val SOAP_ACTION_GEO = ""
 private const val URL = "http://10.0.2.2:8080/MapService"
 
 private const val MAP_WIDTH = 1000
@@ -95,6 +97,9 @@ fun MapClientScreen() {
     var lon2Text by remember { mutableStateOf("") }
 
     var resultBitmap by remember { mutableStateOf<Bitmap?>(null) }
+    var base64ImageText by remember { mutableStateOf<String?>(null) }
+
+    var isShowingResult by remember { mutableStateOf(false) }
 
     if (isSelectingOnMap) {
         MapSelectionScreen(
@@ -110,6 +115,14 @@ fun MapClientScreen() {
                 isPixelsMode = true
                 isSelectingOnMap = false
             }
+        )
+        return
+    }
+    if (isShowingResult && resultBitmap != null) {
+        ResultImageScreen(
+            bitmap = resultBitmap!!,
+            base64 = base64ImageText,
+            onBack = { isShowingResult = false }
         )
         return
     }
@@ -279,9 +292,19 @@ fun MapClientScreen() {
                     }
 
                     coroutineScope.launch {
-                        val bmp = callWebServicePixels(x1, y1, x2, y2)
-                        if (bmp != null) {
-                            resultBitmap = bmp
+                        val base64 = callWebServicePixels(x1, y1, x2, y2)
+                        if (base64 != null) {
+                            base64ImageText = base64
+                            resultBitmap = decodeBase64ToBitmap(base64)
+                            if (resultBitmap != null) {
+                                isShowingResult = true
+                            } else {
+                                Toast.makeText(
+                                    context,
+                                    "Błąd dekodowania obrazu",
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                            }
                         } else {
                             Toast.makeText(
                                 context,
@@ -306,9 +329,19 @@ fun MapClientScreen() {
                     }
 
                     coroutineScope.launch {
-                        val bmp = callWebServiceGeo(lat1, lon1, lat2, lon2)
-                        if (bmp != null) {
-                            resultBitmap = bmp
+                        val base64 = callWebServiceGeo(lat1, lon1, lat2, lon2)
+                        if (base64 != null) {
+                            base64ImageText = base64
+                            resultBitmap = decodeBase64ToBitmap(base64)
+                            if (resultBitmap != null) {
+                                isShowingResult = true
+                            } else {
+                                Toast.makeText(
+                                    context,
+                                    "Błąd dekodowania obrazu",
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                            }
                         } else {
                             Toast.makeText(
                                 context,
@@ -353,6 +386,7 @@ fun MapClientScreen() {
                 lat2Text = ""
                 lon2Text = ""
 
+                base64ImageText = null
                 resultBitmap = null
 
                 Toast.makeText(context, "Dane wyczyszczone", Toast.LENGTH_SHORT).show()
@@ -382,6 +416,22 @@ fun MapClientScreen() {
                 contentScale = ContentScale.Fit
             )
         }
+
+        base64ImageText?.let { base64 ->
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = "Base64 PNG:",
+                fontSize = 14.sp
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text = base64,
+                fontSize = 10.sp,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 60.dp)
+            )
+        }
     }
 }
 
@@ -390,14 +440,13 @@ suspend fun callWebServicePixels(
     y1: Int,
     x2: Int,
     y2: Int
-): Bitmap? = withContext(Dispatchers.IO) {
+): String? = withContext(Dispatchers.IO) {
     try {
         val request = SoapObject(NAMESPACE, METHOD_NAME_PIXELS).apply {
-            // do sprawdzenia nazwy parametrów by się zgadzały z tym co oczekuje serwer
-            addProperty("x1", x1)
-            addProperty("y1", y1)
-            addProperty("x2", x2)
-            addProperty("y2", y2)
+            addProperty("arg0", x1)
+            addProperty("arg1", y1)
+            addProperty("arg2", x2)
+            addProperty("arg3", y2)
         }
 
         val envelope = SoapSerializationEnvelope(SoapEnvelope.VER11).apply {
@@ -417,7 +466,7 @@ suspend fun callWebServicePixels(
         Log.d("SOAP", "Request:\n${transport.requestDump}")
         Log.d("SOAP", "Response:\n${transport.responseDump}")
 
-        decodeBase64ToBitmap(base64Image)
+        base64Image
     } catch (e: Exception) {
         Log.e("SOAP", "Błąd połączenia: ${e.message}", e)
         null
@@ -429,7 +478,7 @@ suspend fun callWebServiceGeo(
     lon1: Double,
     lat2: Double,
     lon2: Double
-): Bitmap? = withContext(Dispatchers.IO) {
+): String? = withContext(Dispatchers.IO) {
     try {
         val request = SoapObject(NAMESPACE, METHOD_NAME_GEO).apply {
             addProperty("lat1", lat1)
@@ -455,17 +504,22 @@ suspend fun callWebServiceGeo(
         Log.d("SOAP", "Request:\n${transport.requestDump}")
         Log.d("SOAP", "Response:\n${transport.responseDump}")
 
-        decodeBase64ToBitmap(base64Image)
+        base64Image
     } catch (e: Exception) {
         Log.e("SOAP", "Błąd połączenia: ${e.message}", e)
         null
     }
 }
-
 private fun decodeBase64ToBitmap(base64Str: String): Bitmap? {
     return try {
         val bytes = Base64.decode(base64Str, Base64.DEFAULT)
-        BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+        val bmp = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+        if (bmp != null) {
+            Log.d("SOAP", "Decoded bitmap size: ${bmp.width}x${bmp.height}")
+        } else {
+            Log.e("SOAP", "BitmapFactory.decodeByteArray zwrócił null")
+        }
+        bmp
     } catch (e: Exception) {
         Log.e("SOAP", "Błąd dekodowania Base64: ${e.message}", e)
         null
@@ -528,7 +582,7 @@ fun MapSelectionScreen(
                 }
         ) {
             Image(
-                painter = painterResource(id = R.drawable.mapa_redy),
+                painter = painterResource(id = R.drawable.mapa),
                 contentDescription = "Mapa miasta",
                 modifier = Modifier
                     .fillMaxSize()
@@ -606,6 +660,68 @@ fun MapSelectionScreen(
             ) {
                 Text("OK")
             }
+        }
+    }
+}
+
+@Composable
+fun ResultImageScreen(
+    bitmap: Bitmap,
+    base64: String?,
+    onBack: () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(
+                start = 16.dp,
+                end = 16.dp,
+                top = 50.dp,
+                bottom = 16.dp
+            ),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "Wynik – fragment mapy",
+                style = MaterialTheme.typography.titleMedium
+            )
+            TextButton(onClick = onBack) {
+                Text("Powrót")
+            }
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        Image(
+            bitmap = bitmap.asImageBitmap(),
+            contentDescription = "Fragment mapy",
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f),
+            contentScale = ContentScale.Fit
+        )
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        base64?.let { b64 ->
+            Text(
+                text = "Base64 PNG (początek):",
+                fontSize = 12.sp,
+                modifier = Modifier.align(Alignment.Start)
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text = if (b64.length > 200) b64.take(200) + "..." else b64,
+                fontSize = 10.sp,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState())
+            )
         }
     }
 }
